@@ -1,0 +1,363 @@
+udpclient.py - simple UDP client
+udpserver.py - simple UDP server
+tcpclient.py - simple TCP client
+tcpserver1.py - simple TCP server
+tcpserver2.py - TCP server with getaddrinfo example
+tcpserver3.py - TCP server with simple select loop
+multi.py - simple multi processing code
+
+
+
+First work with UDP client and server.
+======================================
+
+- three windows: client, server, tcpdump
+- sudo /usr/sbin/tcpdump -n -vvv -XX -i lo0 udp port 12122
+
+1) run udp client:
+==================
+
+python udpclient.py
+
+lsof -n| grep UDP | grep -i python
+
+# if using explicit bound
+
+lsof -n| grep 22222
+COMMAND     PID  USER   FD     TYPE             DEVICE  SIZE/OFF     NODE NAME
+Python    60837 kobus    3u    IPv4 0xba641c8de31c8879       0t0      UDP *:22222
+
+netstat -n -a -p udp| grep 22222
+Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)
+udp4       0      0  *.22222                *.*  
+
+
+# if have OS pick port n number:
+
+lsof -n| grep 63024
+(where 63024 is port number chosen by OS)
+COMMAND     PID  USER   FD     TYPE             DEVICE  SIZE/OFF     NODE NAME
+Python    53093 kobus    3u    IPv4 0x2f99bc600e72e035       0t0      UDP *:63024
+
+netstat -n -a -p udp| grep 63024
+Active Internet connections (including servers)
+Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)  
+udp4       0      0  *.63024                *.* 
+
+
+Observations:
+= UDP packet is sent out even though server is not running
+= The socket is not actually bound to a port until sendto
+= netstat and lsof commands allow us to “see” the state
+associated with this socket in the kernel
+= can see the packet content in tcpdump output
+
+2) run udp server:
+==================
+python udpserver.py
+
+netstat -n -a -p udp| grep 12122
+
+Observations:
+= socket bound explicitly, and shown as bound only after bind command
+
+3) add “enter to finish” line to client
+========================================
+
+run lsof again:
+lsof -n| grep UDP | grep -i python
+
+run netstat again:
+netstat -n -a -p udp| grep 22222
+or
+netstat -n -a -p udp| grep ????
+
+Observation:
+= doesn’t show interaction with server occurred
+
+run another udpclient with first one left “hanging”
+
+Observation:
+= UDP server really is done with first one and ready to
+serve next client.
+
+4) mess with bind:
+===================
+
+on client: use server address associated with
+en0.
+e.g., kobuss-air.uconnect.utah.edu
+(check with ifconfig, uname, nslookup)
+
+Observations:
+= Since server is still bound to all interfaces,
+still works.
+
+on server: use more specific address:
+e.g., kobuss-air.uconnect.utah.edu
+
+Observation:
+= server is bound to specific IP in this case
+= still works as client and server are aligned.
+
+modify client to “localhost”, leave server specific
+
+Observation:
+= won’t work: server bound to different interface
+to what client is sending
+= also: even though the server is running,
+this packet is lost and so the client will
+wait till we kill it…
+
+modify client to bound itself to a specific port
+(and address)
+
+Observation:
+= allowed to do that, still works
+
+client: explicitly bound to en0
+server: explicitly bound to en0
+
+Observation:
+= works, as expected
+
+client: explicitly bound to localhost
+server: explicitly bound to en0
+
+Still works!
+
+Observation:
+= kernel routes between two interfaces
+
+
+4) Work with tcp client and different servers
+===========================================
+
+remember to change tpdump:
+
+tcpdump -n -vvv -X -i lo0 tcp port 12333
+
+
+i) With: tcpclient1.py
+
+Run client without server being up.
+
+Observation:
+= Fail on connect: with connection refused
+= Difference WRT udp: tries to set of a connection
+with server as a result of connect.
+= From TCP dump: we actually did get a packet
+back from TCP: reset. Based on which we got the
+“Connection refused” error
+
+ii) Use tcpserver1.py
+
+- Basic walkthrough
+Server = create socket: AF_INET address family, SOCK_STREAM: TCP
+=> other AF: UNIX, INET6
+=> other type: DGRAM, RAW
+=> door/gate from user level process to network code in kernel
+= bind: 
+=> ask kernel to bind socket to specific port
+=> first parameter is server address
+==> can be localhost: what is localhost
+===> show local interface
+
+
+Run server:
+===========
+
+= listen
+=> ready to receive requests
+=> use command line tools to show server is listening
+
+netstat: show network status
+netstat -n -a -p tcp | grep 12333
+
+lsof: list open files
+lsof -n | grep 12333
+
+
+Run client:
+===========
+
+Basic client:
+
+Client:
+= create socket
+=> uses same parameters
+= no explicit bind
+=> after connect is bound: kernel pick port. what about ip?
+=> will accept packets from any interface
+
+Server side:
+= accept
+=> get back different socket (but still associated with the same port)
+
+
+Observations (from tcpdump):
+= by the time we wait for user input
+already has SYN, SYNACK, ACK, ACK exchanged
+= this is all at the TCP level
+
+See client and server output in terms of ports, sockets and FDs:
+
+Look at command line tool output again:
+
+lsof -n | grep 12333
+netstat -n -a -p tcp | grep 12333
+
+
+Observation:
+= still have listen FD (3)
+= now also have connected FD. one for client side (3) and one for
+server side (6)
+= similar observation for netstat
+
+
+Input data in client:
+======================
+
+= recv
+=> used for bi-directional exchange with client
+
+Observations (from tcpdump):
+= interaction happen with packets
+being ACKed
+= connection closed when done.
+= leave at that for now
+
+Show kernel state again:
+netstat -n -a -p tcp | grep 12333
+
+Observation:
+= The server has already closed the connection
+FIN_WAIT_2
+= The client side has not yet closed: CLOSE_WAIT
+
+Finish on client side:
+
+Observation:
+= back to just the listening socket
+= if things don’t get cleaned up properly,
+the kernel might still be hanging on to state
+even though the process is killed.
+*get address already in use error:*
+(e.g., when kill server with client still connected)
+= might experience this with your proxy work
+
+show that can work with telnet...
+==================================
+
+telnet localhost 12333
+
+Observation:
+= telnet is your friend
+
+
+Bind stuff works as per UDP (don’t show)
+========================================
+
+
+Mess with listen
+================
+
+with listen (1)
+- listen (1): queue up to 1 connection request before refusing
+
+=> show both clients connecting 
+=> server side at application level only shows one
+
+show difference between 
+lsof -n | grep 12333
+netstat -n -a -p tcp | grep 12333
+
+Observation:
+- netstat shows two established connections
+- lsof shows 1.5 established connections. 
+the sever has not accepted the second connection
+- if we enter data in second client:
+is not actually sent
+- if we kill the first one, the second one makes progress as expected
+
+add another client:
+===================
+
+- show client failing
+- show tcpdump/wireshark
+
+if earlier ones finish, no 3 will go through
+
+
+Observation:
+= the fact that TCP accepts multiple connections
+doesn’t mean that your program is handling multiple
+clients (as per PA 1 requirement)
+= you need more, e.g., select loop or threads
+
+
+do multi.py
+============
+
+- uses multiple processes
+- One way in which to deal with multi-client requirement
+
+do tcpserver3.py
+=================
+
+for select loop
+- another way to deal with multiple clients
+
+Observation:
+= single threaded: simpler to program
+= can be very efficient for single threaded approach
+
+
+do tcpserver2.py
+=================
+
+for getaddrinfo
+
+Observation:
+= if want to be more flexible in terms of e.g. IPv4 and
+IPv6
+
+
+
+=========================================================
+
+Notes:
+=======
+
+useful:
+http://docs.python.org/2/howto/sockets.html#socket-howto
+
+- Meaning of localhost versus ''
+- Which address gets bound to when ''
+- listen limit
+
+netstat -n -a -p tcp | grep LISTEN
+
+lsof -n | grep LISTEN
+
+
+From Beej's guide:
+
+- network and host byte order
+
+- why use getaddrinfo?
+
+
+- return codes, errors, exceptions
+
+- when you send(), can you delete the data in your buffer?
+
+- talk about blocking/select
+
+- endianness host/network
+
+===============================================================
+
+
+ 
+
