@@ -5,6 +5,7 @@
 ##############
 
 from socket import *
+from urllib.parse import urlparse
 import sys, getopt
 
 def handle_client(client_socket,client_addr):
@@ -20,7 +21,9 @@ def handle_client(client_socket,client_addr):
     print(msg_list)
     if(msg_list[0] != 'GET'):
       print('Proxy cannot handle this type of request')
-  
+    print(msg_list[0])
+    print(msg_list[1])
+    print(msg_list[2])
   socket.close()
 
 print (sys.argv)
