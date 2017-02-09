@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import sys
 import multiprocessing
 import hashlib
-
+import re
 
 def handle_client(client_socket, client_addr):
     while (1):
@@ -73,12 +73,17 @@ def create_md5_from_bytes(bytes_object):
 def check_cymru_for_md5(md5_hashcode):
     cymru_socket = socket(AF_INET, SOCK_STREAM)
     cymru_socket.connect(('hash.cymru.com', 43))
-    cymru_socket.sendall(md5_hashcode)
-    print(cymru_socket.recv(4096))
+    #message_to_send = md5_hashcode.encode()
+    message_to_send = 'begin\r\n' + md5_hashcode + '\r\nend\r\n'
+    cymru_socket.sendall(message_to_send.encode('utf-8'))
+    h_code = cymru_socket.recv(4096)
+    return h_code
 
+#def is_line_http_header(line):
+    
 
 def http_request(host_name, path, headers):
-    http_port = 80
+    http_port = 2113
     web_socket = socket(AF_INET, SOCK_STREAM)
     try:
         web_socket.connect((host_name, http_port))
@@ -90,20 +95,20 @@ def http_request(host_name, path, headers):
     bytes_to_md5 = bytearray()
     buff = web_socket.recv(4096)
     bytes_to_md5.extend(buff)
-    web_string = buff.decode('utf-8')
+    #web_string = buff.decode('utf-8')
     #client_socket.sendall(buff)
     temp = buff
     while (len(buff) > 0):
         try:
             buff = web_socket.recv(4096)
             bytes_to_md5.extend(buff)
-            web_string += buff.decode('utf-8')
+            #web_string += buff.decode('utf-8')
         # temp += buff
         #try:
           #  client_socket.sendall(buff)
         except Exception:
             break
-    print(web_string)
+    #print(web_string)
     md5_code = create_md5_from_bytes(bytes_to_md5)
     md5_status = check_cymru_for_md5(md5_code)
     code_is_bad = 0
