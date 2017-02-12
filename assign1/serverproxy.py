@@ -24,8 +24,6 @@ def handle_client(client_socket, client_addr):
         if (msg_list[0] != 'GET'):
             not_impl = 'Not Implemented (501) error (see RFC 1945 section 9.5 - Server Error)'
             client_socket.sendall(not_impl.encode())
-
-            # break
         elif (len(msg_list) > 3):  # must be browser
             web_sock = socket(AF_INET, SOCK_STREAM)
             url_par = urlparse(msg_list[1])
@@ -70,20 +68,25 @@ def create_md5_from_bytes(bytes_object):
     return md5_hash
 
 
-def check_cymru_for_md5(md5_hashcode):
+def hash_is_virus(md5_hashcode):
     cymru_socket = socket(AF_INET, SOCK_STREAM)
     cymru_socket.connect(('hash.cymru.com', 43))
     #message_to_send = md5_hashcode.encode()
-    message_to_send = 'begin\r\n' + md5_hashcode + '\r\nend\r\n'
+    message_to_send = md5_hashcode + '\r\n'
     cymru_socket.sendall(message_to_send.encode('utf-8'))
     h_code = cymru_socket.recv(4096)
-    return h_code
+    if(b'NO_DATA' in h_code):
+        return 'False'
+    else:
+        return 'True'
+    #print(h_code.decode())
+    #return h_code
 
 #def is_line_http_header(line):
     
 
 def http_request(host_name, path, headers):
-    http_port = 2113
+    http_port = 80
     web_socket = socket(AF_INET, SOCK_STREAM)
     try:
         web_socket.connect((host_name, http_port))
@@ -92,30 +95,25 @@ def http_request(host_name, path, headers):
     message = 'GET ' + path + ' HTTP/1.0\n\nHost: ' + host_name + '\n' + headers
     print(message)
     web_socket.sendall(message.encode())
-    bytes_to_md5 = bytearray()
+    web_buffer = bytearray()
     buff = web_socket.recv(4096)
-    bytes_to_md5.extend(buff)
-    #web_string = buff.decode('utf-8')
-    #client_socket.sendall(buff)
-    temp = buff
+    web_buffer.extend(buff)
     while (len(buff) > 0):
         try:
             buff = web_socket.recv(4096)
-            bytes_to_md5.extend(buff)
-            #web_string += buff.decode('utf-8')
-        # temp += buff
-        #try:
-          #  client_socket.sendall(buff)
+            web_buffer.extend(buff)
         except Exception:
             break
-    #print(web_string)
-    md5_code = create_md5_from_bytes(bytes_to_md5)
-    md5_status = check_cymru_for_md5(md5_code)
-    code_is_bad = 0
-    if code_is_bad:
-        client_socket.sendall(b'malware')
+    html_text, separator, binary = web_buffer.partition(b'\r\n\r\n')
+    if(binary == b''):
+        md5_code = create_md5_from_bytes(html_text)
     else:
-        client_socket.sendall(bytes_to_md5)
+        md5_code = create_md5_from_bytes(binary)
+    md5_status = hash_is_virus(md5_code)
+    if (md5_status == 'True'):
+        client_socket.sendall(b'malware\r\n')
+    else:
+        client_socket.sendall(web_buffer)
     web_socket.close()
 
 
