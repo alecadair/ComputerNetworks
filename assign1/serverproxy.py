@@ -39,8 +39,7 @@ def handle_client(client_socket, client_addr):
             url_par = urlparse(msg_list[1])
             # connect socket to port 80(HTTP port)
             try:
-                web_sock.connect(('localhost',8000))
-                #web_sock.connect((url_par.hostname, 80))
+                web_sock.connect((url_par.hostname, 80))
             except Exception:
                 break
             # send the web server the clients request
@@ -59,16 +58,25 @@ def handle_client(client_socket, client_addr):
                     browser_buff.extend(buff)
                 except Exception:
                     break
+            #check if content contains malware
             is_mal = check_for_malware(browser_buff)
+            #if content contains malware report accordingly otherwise send content to client
             if(is_mal == 'True'):
                 client_socket.sendall(b'malware\r\n')
             else:
                 client_socket.sendall(browser_buff)
                 client_socket.sendall(b'\r\n')
-            client_socket.shutdown(SHUT_RDWR)
-            client_socket.close()
-            web_sock.shutdown(SHUT_RDWR)
-            web_sock.close()
+            try:
+                client_socket.shutdown(SHUT_RDWR)
+                client_socket.close()
+            except Exception:
+                return
+            try:
+                web_sock.shutdown(SHUT_RDWR)
+                web_sock.close()
+            except Exception:
+                return
+
             return
         # client is probably telnet
         else:
@@ -117,6 +125,7 @@ def hash_is_virus(md5_hashcode):
         return 'True'
 
 def check_for_malware(byte_stream):
+    # parse web response into html text, the seperator for objects, and a possible binary executable
     html_text, separator, binary = byte_stream.partition(b'\r\n\r\n')
     # create md5 hash for the web object received
     # if binary is empty the web server sent no html headers and just a plain binary
@@ -155,17 +164,8 @@ def http_request(host_name, path, headers):
             web_buffer.extend(buff)
         except Exception:
             break
-    # parse web response into html text, the seperator for objects, and a possible binary executable
-    html_text, separator, binary = web_buffer.partition(b'\r\n\r\n')
-    # create md5 hash for the web object received
-    # if binary is empty the web server sent no html headers and just a plain binary
-    if (binary == b''):
-        md5_code = create_md5_from_bytes(html_text)
-    # if binary is not empty, the web server sent html headers
-    else:
-        md5_code = create_md5_from_bytes(binary)
-    # check if md5 hash is in cymru registry
-    md5_status = hash_is_virus(md5_code)
+    #check buffer recieved from the web socket for malware
+    md5_status = check_for_malware(web_buffer)
     # if malware detected report to client, otherwise send content to client
     if (md5_status == 'True'):
         client_socket.sendall(b'malware\r\n')
