@@ -14,7 +14,10 @@ import hashlib
 def handle_client(client_socket, client_addr):
     while (1):
         # receive client http request
-        data = client_socket.recv(4096)
+        try:
+            data = client_socket.recv(8192)
+        except Exception:
+            break
         try:
             # decode message
             message = data.decode('utf-8')
@@ -35,27 +38,33 @@ def handle_client(client_socket, client_addr):
             web_sock = socket(AF_INET, SOCK_STREAM)
             url_par = urlparse(msg_list[1])
             # connect socket to port 80(HTTP port)
-            web_sock.connect((url_par.hostname, 80))
+            try:
+                web_sock.connect((url_par.hostname, 80))
+            except Exception:
+                break
             # send the web server the clients request
             to_send = message.encode()
             web_sock.sendall(to_send)
+            #buff = bytes()
             buff = web_sock.recv(4096)
-            client_socket.sendall(buff)
+            #client_socket.sendall(buff)
             browser_buff = bytearray()
             browser_buff.extend(buff)
             # be sure to send entire client message
             while (len(buff) > 0):
                 try:
                     web_sock.settimeout(1.0)
-                    buff = web_sock.recv(4096)
+                    buff = web_sock.recv(2048)
                     browser_buff.extend(buff)
-                    client_socket.sendall(buff)
                 except Exception:
                     break
-            #client_socket.sendall(browser_buff)
-            # close socket
-            #client_socket.sendall(b'\r\n')
+            client_socket.sendall(browser_buff)
+            client_socket.sendall(b'\r\n')
+            client_socket.shutdown(SHUT_RDWR)
+            client_socket.close()
+            web_sock.shutdown(SHUT_RDWR)
             web_sock.close()
+            return
         # client is probably telnet
         else:
             host = ''
