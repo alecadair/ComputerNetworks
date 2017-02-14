@@ -39,7 +39,8 @@ def handle_client(client_socket, client_addr):
             url_par = urlparse(msg_list[1])
             # connect socket to port 80(HTTP port)
             try:
-                web_sock.connect((url_par.hostname, 80))
+                web_sock.connect(('localhost',8000))
+                #web_sock.connect((url_par.hostname, 80))
             except Exception:
                 break
             # send the web server the clients request
@@ -54,12 +55,16 @@ def handle_client(client_socket, client_addr):
             while (len(buff) > 0):
                 try:
                     web_sock.settimeout(1.0)
-                    buff = web_sock.recv(2048)
+                    buff = web_sock.recv(4096)
                     browser_buff.extend(buff)
                 except Exception:
                     break
-            client_socket.sendall(browser_buff)
-            client_socket.sendall(b'\r\n')
+            is_mal = check_for_malware(browser_buff)
+            if(is_mal == 'True'):
+                client_socket.sendall(b'malware\r\n')
+            else:
+                client_socket.sendall(browser_buff)
+                client_socket.sendall(b'\r\n')
             client_socket.shutdown(SHUT_RDWR)
             client_socket.close()
             web_sock.shutdown(SHUT_RDWR)
@@ -110,6 +115,19 @@ def hash_is_virus(md5_hashcode):
         return 'False'
     else:
         return 'True'
+
+def check_for_malware(byte_stream):
+    html_text, separator, binary = byte_stream.partition(b'\r\n\r\n')
+    # create md5 hash for the web object received
+    # if binary is empty the web server sent no html headers and just a plain binary
+    if (binary == b''):
+        md5_code = create_md5_from_bytes(html_text)
+    # if binary is not empty, the web server sent html headers
+    else:
+        md5_code = create_md5_from_bytes(binary)
+    # check if md5 hash is in cymru registry
+    md5_status = hash_is_virus(md5_code)
+    return md5_status
 
 
 # perform http_request for given host_name, path, and headers
