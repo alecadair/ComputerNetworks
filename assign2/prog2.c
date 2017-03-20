@@ -26,6 +26,7 @@
 #define   A    0
 #define   B    1
 
+#define TIME_WAIT 25
 
 /* a "msg" is the data unit passed from layer 5 (teachers code) to layer  */
 /* 4 (students' code).  It contains the data (characters) to be delivered */
@@ -39,24 +40,33 @@ struct list_msg{
     // struct list_msg * next_message;
 };
 
-//struct list_msg* msg_list = 0;//this just points to main_list below.
-//struct list_msg main_list;
-//char list_initiated = 0;
-
-struct msg msg_buffer[50];
-int end_of_buff = 0;
-int ack_index = 0;
-int first_msg_sent = 0;
 /* a packet is the data unit passed from layer 4 (students code) to layer */
 /* 3 (teachers code).  Note the pre-defined packet structure, which all   */
 /* students must follow. */
 struct pkt {
-   int seqnum;
-   int acknum;
-   int checksum;
-   char payload[20];
-    };
+    int seqnum;
+    int acknum;
+    int checksum;
+    char payload[20];
+};
 
+//struct list_msg* msg_list = 0;//this just points to main_list below.
+//struct list_msg main_list;
+//char list_initiated = 0;
+
+struct pkt  pkt_buffer[500];
+int end_of_buff = 0;
+int ack_index = 0;
+int first_msg_sent = 0;
+
+struct pkt last_packet_sent;
+struct pkt last_ack_pkt_sent;
+
+int seq_num = 0;
+int rcv_seq_num = 0;
+int ack_wait = 0;
+
+char packets_are_equal(struct pkt, struct pkt);
 void tolayer3(int,struct pkt);
 void tolayer5(int,char[20]);
 void starttimer(int,float);
@@ -69,34 +79,42 @@ void generate_next_arrival();
 struct event p; void insertevent(struct event*p);
 void printevlist();
 
-void insert_message_to_queue(struct msg msg_to_queue){
-    msg_buffer[end_of_buff] = msg_to_queue;
+char packets_are_equal(struct pkt pkt1, struct pkt pkt2){
+    for(int i =0; i < 20; i ++){
+        if(pkt1.payload[i] != pkt2.payload[i])
+            return 0;
+    }
+    if(pkt1.acknum != pkt2.acknum)
+        return 0;
+    if(pkt1.seqnum != pkt2.seqnum)
+        return 0;
+    return 1;
+}
+void send_packet(struct pkt pkt_to_send){
+
+}
+void insert_packet_to_queue(struct pkt pkt_to_queue){
+    pkt_buffer[end_of_buff] = pkt_to_queue;
     end_of_buff++;
 }
-
-struct pkt last_packet_sent;
-struct pkt last_ack_pkt_sent;
-
-int seq_num = 0;
-int rcv_seq_num = 0;
-int ack_wait = 0;
 
 char corrupt(struct pkt packet){
     int check = 0;
     for(int i = 0; i < 20; i ++)
         check += packet.payload[i];
-    char* payload_ptr = (char*) &(packet.seqnum);
+    //char* payload_ptr = (char*) &(packet.seqnum);
     //sum bytes in seqnum
-    for(int i = 0; i < sizeof(int); i++){
-        char* temp = payload_ptr + i;
-        check += (int)*temp;
-    }
+    //for(int i = 0; i < sizeof(int); i++){
+        //char* temp = payload_ptr + i;
+        //    check += (signed char)*temp;
+    //}
     //sum bytes in acknum
-    for(int i = 0; i < sizeof(int); i ++){
-        char* temp = payload_ptr + i;
-        check += (int)*temp;
-    }
-
+    //for(int i = 0; i < sizeof(int); i ++){
+    //    char* temp = payload_ptr + i;
+    //    check += (signed char)*temp;
+    //}
+    check += packet.acknum;
+    check += packet.seqnum;
     check += packet.checksum;
     //check += packet.acknum;
     //for(unsigned long i = 0)
@@ -112,11 +130,10 @@ void create_checksum(struct pkt* checksum_pkt){
     //sum payload
     char * payload_ptr = checksum_pkt->payload;
     for(unsigned long i = 0; i < 20; i ++){
-
         char* temp = payload_ptr + i;
         checksum += (int)*(temp);
     }
-    // sum bytes in seqnum
+  /*   // sum bytes in seqnum
     payload_ptr = (char*)&(checksum_pkt->seqnum);
     for(unsigned long i = 0; i < sizeof(int); i ++){
         char* temp = payload_ptr + i;
@@ -127,9 +144,9 @@ void create_checksum(struct pkt* checksum_pkt){
     for(unsigned long i = 0; i < sizeof(int); i++){
         char* temp = payload_ptr + i;
         checksum += (int)*(temp);
-    }
-    //checksum += checksum_pkt->seqnum;
-    //checksum += checksum_pkt->acknum;
+        }*/
+    checksum += checksum_pkt->seqnum;
+    checksum += checksum_pkt->acknum;
     checksum = ~checksum;
     checksum_pkt->checksum = checksum;
     return;
@@ -139,34 +156,36 @@ char isACK(struct pkt packet, int to_check){
 	char result;
 	return result;
 }
-/********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
-struct pkt make_pkt(int seq_num, char data[20], int checksum){
-	struct pkt packet;
-	packet.seqnum = seq_num;
-	for(int i = 0; i < 20; i ++)
-		packet.payload[i] = data[i];
-    create_checksum(&packet);
-	return packet;
+/********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
+struct pkt make_packet(struct msg message, int ack, int seq){
+    struct pkt new_packet;
+    for(int i =0; i < 20; i++)
+        new_packet.payload[i] = message.data[i];
+    new_packet.acknum = ack;
+    new_packet.seqnum = seq;
+    create_checksum(&new_packet);
+    return new_packet;
 }
-/********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
-
 
 /* called from layer 5, passed the data to be sent to other side */
 void A_output(struct msg message)
 {
-    struct pkt packet_to_send;
+    struct pkt packet_to_send = make_packet(message,0,seq_num);
+    seq_num = !seq_num;
     //struct pkt packet_to_send = make_pkt(ack_num, message.data, 3);
-    for(int i = 0; i < 20; i++)
+
+    /*for(int i = 0; i < 20; i++)
         packet_to_send.payload[i] = message.data[i];
     packet_to_send.acknum = 0;
     packet_to_send.seqnum = seq_num;
-    create_checksum(&packet_to_send);
-    insert_message_to_queue(message);
+    create_checksum(&packet_to_send);*/
+    insert_packet_to_queue(packet_to_send);
     if(!first_msg_sent){
         last_packet_sent = packet_to_send;
         tolayer3(A,packet_to_send);
-        starttimer(A,25);
+        starttimer(A,TIME_WAIT);
+        first_msg_sent = 1;
     }
 }
 
@@ -178,24 +197,35 @@ void B_output(struct msg message)  /* need be completed only for extra credit */
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet)
 {
-    if(corrupt(packet))
+    if(corrupt(packet)){
+        //tolayer3(A,pkt_buffer[ack_index]);
+        //stoptimer(A);
+        //starttimer(A, TIME_WAIT);
         return;
-    if(packet.acknum != ack_wait)
+    }if(packet.acknum != ack_wait){
+        //tolayer3(A,pkt_buffer[ack_index]);
+        //stoptimer(A);
+        //starttimer(A,TIME_WAIT);
         return;
+    }
     stoptimer(A);
+    starttimer(A,TIME_WAIT);
+    ack_index ++;
     ack_wait = !ack_wait;
-	char new_msg[20];
-	for(int i = 0; i < 20; i ++)
-		new_msg[i] = packet.payload[i];
-    tolayer5(A,new_msg);
+    struct pkt pkt_to_send_B = pkt_buffer[ack_index];
+    tolayer3(A,pkt_to_send_B);
+    //starttimer(A,25);
+    //for(int i = 0; i < 20; i ++)
+        //	new_msg[i] = packet.payload[i];
+    //tolayer5(A,new_msg);
 
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
-    tolayer3(A,last_packet_sent);
-    starttimer(A,25);
+    tolayer3(A,pkt_buffer[ack_index]);
+    starttimer(A,TIME_WAIT);
 
 }  
 
@@ -216,36 +246,49 @@ void A_init()
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 
-/* called from layer 3, wh[<64;30;60M]en a packet arrives for layer 4 at B*/
+/* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
     char is_corrupt = corrupt(packet);
     if(is_corrupt)
         return;
-    if(packet.seqnum != rcv_seq_num)
+    if(packet.seqnum != rcv_seq_num){//packet retransmitted from A, corrupt ACK
+        struct msg structmsg;
+        memset(structmsg.data, '0',20);
+        struct pkt dup_ack_pkt = make_packet(structmsg, packet.seqnum, 0);
+        tolayer3(B,dup_ack_pkt);
+        //if(packets_are_equal(last_ack_pkt_sent,packet)){
+   /*         struct msg structmsg;
+            for(int i = 0; i < 20; i++)
+                structmsg.data[i] = packet.payload[i];
+            struct pkt dup_ack_pkt = make_packet(structmsg, last_ack_pkt_sent.acknum, 0);
+            create_checksum(&dup_ack_pkt);
+            tolayer3(B,dup_ack_pkt);*/
+            //}
         return;
-    rcv_seq_num = !rcv_seq_num;
-
-	char new_msg[20];
+    }
+    //rcv_seq_num = !rcv_seq_num;
+    char new_msg[20];
 	for(int i = 0; i < 20; i ++)
-		new_msg[i] = packet.payload[i];
+        new_msg[i] = packet.payload[i];
+    /*still need to check for duplicates*/
     tolayer5(B,new_msg);
     struct pkt ack_pkt;
-    ack_pkt.acknum = ack_wait;
+    ack_pkt.acknum = rcv_seq_num;
+    rcv_seq_num = !rcv_seq_num;
     memset(ack_pkt.payload,'0',20);
     ack_pkt.seqnum = 0;
     create_checksum(&ack_pkt);
     last_ack_pkt_sent = ack_pkt;
     tolayer3(B,ack_pkt);
-    starttimer(B, 25);
-    ack_wait = !ack_wait;
+    //starttimer(B, 25);
 }
 
 /* called when B's timer goes off */
 void B_timerinterrupt()
 {
-    tolayer3(B, last_ack_pkt_sent);
-    starttimer(B,25);
+    //tolayer3(B, last_ack_pkt_sent);
+    //starttimer(B,25);
 }
 
 /* the following rouytine will be called once (only) before any other */
@@ -643,7 +686,8 @@ void tolayer5(AorB,datasent)
 {
   int i;  
   if (TRACE>2) {
-     printf("          TOLAYER5: data received: ");
+      printf("%s          TOLAYER5: data received: ","\x1B[31m");
+      printf("%s","\x1B[0m");
      for (i=0; i<20; i++)  
         printf("%c",datasent[i]);
      printf("\n");
