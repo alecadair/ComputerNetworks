@@ -26,7 +26,17 @@
 #define   A    0
 #define   B    1
 
-#define TIME_WAIT 25
+
+int TRACE = 1;             /* for my debugging */
+int nsim = 0;              /* number of messages from 5 to 4 so far */
+int nsimmax = 0;           /* number of msgs to generate, then stop */
+float time = 0.000;
+float lossprob;            /* probability that a packet is dropped  */
+float corruptprob;         /* probability that one bit is packet is flipped */
+float lambda;              /* arrival rate of messages from layer 5 */
+int   ntolayer3;           /* number sent into layer 3 */
+int   nlost;               /* number lost in media */
+int ncorrupt;              /* number corrupted by media */
 
 /* a "msg" is the data unit passed from layer 5 (teachers code) to layer  */
 /* 4 (students' code).  It contains the data (characters) to be delivered */
@@ -34,11 +44,6 @@
 struct msg {
   char data[20];
   };
-
-struct list_msg{
-    struct msg* message;
-    // struct list_msg * next_message;
-};
 
 /* a packet is the data unit passed from layer 4 (students code) to layer */
 /* 3 (teachers code).  Note the pre-defined packet structure, which all   */
@@ -49,21 +54,37 @@ struct pkt {
     int checksum;
     char payload[20];
 };
+//time for timer to wait before timeout
+int TIME_WAIT;
+//counter for corrupted packets
+float corrupted_packets = 0;
+//counter for dropped packets
+float dropped_packets = 0;
+//counter for total packets sent to layer 3 from both sides
+float packets_sent = 0;
+//counter for ACKS
+float ack_count = 0;
+//counter for successful messages sent.
+float sucessful_packets = 0;
 
-//struct list_msg* msg_list = 0;//this just points to main_list below.
-//struct list_msg main_list;
-//char list_initiated = 0;
-
-struct pkt  pkt_buffer[500];
+//array to buffer packets into
+struct pkt  pkt_buffer[1000];
+//mark end of packets buffered.
 int end_of_buff = 0;
+//mark end of last packet ACKed.
 int ack_index = 0;
+//mark the first msg sent for A_output
 int first_msg_sent = 0;
 
+//variables to keep track of last ack and packets sent
 struct pkt last_packet_sent;
 struct pkt last_ack_pkt_sent;
 
+//current sequence number sender is using
 int seq_num = 0;
+//current sequence number receiver is waiting to ack
 int rcv_seq_num = 0;
+//current ack the sender is waiting on
 int ack_wait = 0;
 
 char packets_are_equal(struct pkt, struct pkt);
@@ -79,6 +100,7 @@ void generate_next_arrival();
 struct event p; void insertevent(struct event*p);
 void printevlist();
 
+/*returns 1 if all fields in pkt1 and pkt2 are equal to eachother*/
 char packets_are_equal(struct pkt pkt1, struct pkt pkt2){
     for(int i =0; i < 20; i ++){
         if(pkt1.payload[i] != pkt2.payload[i])
@@ -90,41 +112,27 @@ char packets_are_equal(struct pkt pkt1, struct pkt pkt2){
         return 0;
     return 1;
 }
-void send_packet(struct pkt pkt_to_send){
-
-}
+/*insert packet into queue for sending*/
 void insert_packet_to_queue(struct pkt pkt_to_queue){
     pkt_buffer[end_of_buff] = pkt_to_queue;
     end_of_buff++;
 }
 
+/*returns 1 of packet is corrupt 0 otherwise*/
 char corrupt(struct pkt packet){
     int check = 0;
     for(int i = 0; i < 20; i ++)
         check += packet.payload[i];
-    //char* payload_ptr = (char*) &(packet.seqnum);
-    //sum bytes in seqnum
-    //for(int i = 0; i < sizeof(int); i++){
-        //char* temp = payload_ptr + i;
-        //    check += (signed char)*temp;
-    //}
-    //sum bytes in acknum
-    //for(int i = 0; i < sizeof(int); i ++){
-    //    char* temp = payload_ptr + i;
-    //    check += (signed char)*temp;
-    //}
     check += packet.acknum;
     check += packet.seqnum;
     check += packet.checksum;
-    //check += packet.acknum;
-    //for(unsigned long i = 0)
     check = ~check;
     if(check == 0)
         return 0;
     else
         return 1;
 }
-
+/*sets checksum of checksum_pkt*/
 void create_checksum(struct pkt* checksum_pkt){
     int checksum = 0;
     //sum payload
@@ -133,18 +141,6 @@ void create_checksum(struct pkt* checksum_pkt){
         char* temp = payload_ptr + i;
         checksum += (int)*(temp);
     }
-  /*   // sum bytes in seqnum
-    payload_ptr = (char*)&(checksum_pkt->seqnum);
-    for(unsigned long i = 0; i < sizeof(int); i ++){
-        char* temp = payload_ptr + i;
-        checksum += (int)*(temp);
-    }
-    //sum bytes in acknum
-    payload_ptr = (char*)&(checksum_pkt->acknum);
-    for(unsigned long i = 0; i < sizeof(int); i++){
-        char* temp = payload_ptr + i;
-        checksum += (int)*(temp);
-        }*/
     checksum += checksum_pkt->seqnum;
     checksum += checksum_pkt->acknum;
     checksum = ~checksum;
@@ -152,6 +148,7 @@ void create_checksum(struct pkt* checksum_pkt){
     return;
 }
 
+/*check if packet isn ACK packet with ack number to_check*/
 char isACK(struct pkt packet, int to_check){
 	char result;
 	return result;
@@ -171,19 +168,19 @@ struct pkt make_packet(struct msg message, int ack, int seq){
 /* called from layer 5, passed the data to be sent to other side */
 void A_output(struct msg message)
 {
+    char out_msg[20];
+    for(int i = 0; i < 20; i ++)
+        out_msg[i] = message.data[i];
+    printf("Queuing message: %s to output buffer\n", out_msg);
     struct pkt packet_to_send = make_packet(message,0,seq_num);
     seq_num = !seq_num;
-    //struct pkt packet_to_send = make_pkt(ack_num, message.data, 3);
-
-    /*for(int i = 0; i < 20; i++)
-        packet_to_send.payload[i] = message.data[i];
-    packet_to_send.acknum = 0;
-    packet_to_send.seqnum = seq_num;
-    create_checksum(&packet_to_send);*/
+    printf("Sequence number for message: %d\n",!seq_num);
+    printf("Checksum for packet is %04x\n\n", packet_to_send.checksum);
     insert_packet_to_queue(packet_to_send);
     if(!first_msg_sent){
         last_packet_sent = packet_to_send;
         tolayer3(A,packet_to_send);
+        packets_sent ++;
         starttimer(A,TIME_WAIT);
         first_msg_sent = 1;
     }
@@ -198,33 +195,48 @@ void B_output(struct msg message)  /* need be completed only for extra credit */
 void A_input(struct pkt packet)
 {
     if(corrupt(packet)){
-        //tolayer3(A,pkt_buffer[ack_index]);
-        //stoptimer(A);
-        //starttimer(A, TIME_WAIT);
+        printf("ACK packet corrupted\n");
+        corrupted_packets ++;
         return;
     }if(packet.acknum != ack_wait){
-        //tolayer3(A,pkt_buffer[ack_index]);
-        //stoptimer(A);
-        //starttimer(A,TIME_WAIT);
+        printf("ACK received for wrong packet.\n");
+        dropped_packets ++;
         return;
     }
+    ack_count++;
+    printf("Packet correctly acknowledged.\n");
+    printf("Packet ACK num: %d\n\n", packet.acknum);
+    printf("Number of successfully ACKed packets: %d", ack_count);
     stoptimer(A);
     starttimer(A,TIME_WAIT);
     ack_index ++;
+    sucessful_packets ++;
     ack_wait = !ack_wait;
     struct pkt pkt_to_send_B = pkt_buffer[ack_index];
+    printf("Attempting to send new packet.\n");
+    printf("Packet seq num: %d\n", pkt_to_send_B.seqnum);
+    char output[20];
+    for(int i = 0; i < 20; i ++)
+        output[i] = pkt_to_send_B.payload[i];
+    output[19] = '\0';
+    printf("Packet message: %s\n\n", output);
     tolayer3(A,pkt_to_send_B);
-    //starttimer(A,25);
-    //for(int i = 0; i < 20; i ++)
-        //	new_msg[i] = packet.payload[i];
-    //tolayer5(A,new_msg);
+    packets_sent ++;
 
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
+    printf("Timer hit packet being recent\n");
+    printf("Sequence Number: %d\n", pkt_buffer[ack_index].seqnum);
+    char pay[20];
+    for(int i = 0; i < 20; i ++)
+        pay[i] = pkt_buffer[ack_index].payload[i];
+    pay[19] = '\0';
+    printf("Payload being resent: %s\n\n", pay);
     tolayer3(A,pkt_buffer[ack_index]);
+    packets_sent ++;
     starttimer(A,TIME_WAIT);
 
 }  
@@ -238,9 +250,7 @@ void A_init()
     last_packet_sent.checksum = 0;
     last_packet_sent.checksum = 0;
     last_packet_sent.seqnum = 0;
-    //memset(main_list.message.data, '0', 20);
-    //main_list.next_message = 0;
-    //msg_list = &main_list;
+    TIME_WAIT = 3*lambda;
 }
 
 
@@ -249,29 +259,31 @@ void A_init()
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
+
     char is_corrupt = corrupt(packet);
-    if(is_corrupt)
+    if(is_corrupt){
+        corrupted_packets ++;
+        printf("Packet received at receiver corrupted\n\n");
         return;
+    }
     if(packet.seqnum != rcv_seq_num){//packet retransmitted from A, corrupt ACK
+        printf("Duplicate message received\n\n");
         struct msg structmsg;
         memset(structmsg.data, '0',20);
         struct pkt dup_ack_pkt = make_packet(structmsg, packet.seqnum, 0);
         tolayer3(B,dup_ack_pkt);
-        //if(packets_are_equal(last_ack_pkt_sent,packet)){
-   /*         struct msg structmsg;
-            for(int i = 0; i < 20; i++)
-                structmsg.data[i] = packet.payload[i];
-            struct pkt dup_ack_pkt = make_packet(structmsg, last_ack_pkt_sent.acknum, 0);
-            create_checksum(&dup_ack_pkt);
-            tolayer3(B,dup_ack_pkt);*/
-            //}
         return;
     }
-    //rcv_seq_num = !rcv_seq_num;
     char new_msg[20];
-	for(int i = 0; i < 20; i ++)
+    char new_msg_show[21];
+    for(int i = 0; i < 20; i ++){
         new_msg[i] = packet.payload[i];
-    /*still need to check for duplicates*/
+        new_msg_show[i] = packet.payload[i];
+    }
+    new_msg_show[20] = '\0';
+    printf("Message successfully received at sender\n");
+    printf("Message sequence number: %d\n", packet.seqnum);
+    printf("Message %s\n\n", new_msg_show);
     tolayer5(B,new_msg);
     struct pkt ack_pkt;
     ack_pkt.acknum = rcv_seq_num;
@@ -281,7 +293,7 @@ void B_input(struct pkt packet)
     create_checksum(&ack_pkt);
     last_ack_pkt_sent = ack_pkt;
     tolayer3(B,ack_pkt);
-    //starttimer(B, 25);
+    packets_sent ++;
 }
 
 /* called when B's timer goes off */
@@ -323,18 +335,6 @@ struct event {
    struct event *next;
  };
 struct event *evlist = NULL;   /* the event list */
-
-
-int TRACE = 1;             /* for my debugging */
-int nsim = 0;              /* number of messages from 5 to 4 so far */
-int nsimmax = 0;           /* number of msgs to generate, then stop */
-float time = 0.000;
-float lossprob;            /* probability that a packet is dropped  */
-float corruptprob;         /* probability that one bit is packet is flipped */
-float lambda;              /* arrival rate of messages from layer 5 */
-int   ntolayer3;           /* number sent into layer 3 */
-int   nlost;               /* number lost in media */
-int ncorrupt;              /* number corrupted by media*/
 
 int main()
 {
