@@ -236,29 +236,6 @@ void A_input(struct pkt packet)
         stoptimer(A);
         starttimer(A,TIME_WAIT);
     }
-    //printf("Packet correctly acknowledged.\n");
-    //printf("Packet ACK num: %d\n\n", packet.acknum);
-    //printf("Number of successfully ACKed packets: %d", ack_count);
-    //if(next_seq_num < base + N){
-    //    struct pkt pkt_to_send_B =
-    // }
-    /*
-    stoptimer(A);
-    starttimer(A,TIME_WAIT);
-    ack_index ++;
-    sucessful_packets ++;
-    ack_wait = !ack_wait;
-    struct pkt pkt_to_send_B = pkt_buffer[ack_index];
-    printf("Attempting to send new packet.\n");
-    printf("Packet seq num: %d\n", pkt_to_send_B.seqnum);
-    char output[20];
-    for(int i = 0; i < 20; i ++)
-        output[i] = pkt_to_send_B.payload[i];
-    output[19] = '\0';
-    printf("Packet message: %s\n\n", output);
-    tolayer3(A,pkt_to_send_B);
-    packets_sent ++;*/
-
 }
 
 /* called when A's timer goes off */
@@ -269,15 +246,6 @@ void A_timerinterrupt()
     starttimer(A,TIME_WAIT);
     for(int i = base; i < (base + N); i++)
         tolayer3(A,pkt_buffer[i]);
-    //char pay[20];
-    //for(int i = 0; i < 20; i ++)
-        //    pay[i] = pkt_buffer[ack_index].payload[i];
-    //pay[19] = '\0';
-    //printf("Payload being resent: %s\n\n", pay);
-    //tolayer3(A,pkt_buffer[ack_index]);
-    //packets_sent ++;
-    //starttimer(A,TIME_WAIT);
-
 }  
 
 /* the following routine will be called once (only) before any other */
@@ -312,7 +280,6 @@ void B_input(struct pkt packet)
         tolayer3(B,ack_packet);
         return;
     }
-    //if(packet.seqnum  != expected_seq_num)
     char to_upper[21];
     for(int i = 0; i < 20; i++)
         to_upper[i] = packet.payload[i];
@@ -323,34 +290,6 @@ void B_input(struct pkt packet)
     struct pkt ack_packet = make_packet(ack_msg, expected_seq_num, 0);
     tolayer3(B,ack_packet);
     expected_seq_num ++;
-   /* if(packet.seqnum != rcv_seq_num){//packet retransmitted from A, corrupt ACK
-        printf("Duplicate message received\n\n");
-        struct msg structmsg;
-        memset(structmsg.data, '0',20);
-        struct pkt dup_ack_pkt = make_packet(structmsg, packet.seqnum, 0);
-        tolayer3(B,dup_ack_pkt);
-        return;
-    }
-    char new_msg[20];
-    char new_msg_show[21];
-    for(int i = 0; i < 20; i ++){
-        new_msg[i] = packet.payload[i];
-        new_msg_show[i] = packet.payload[i];
-    }
-    new_msg_show[20] = '\0';
-    printf("Message successfully received at sender\n");
-    printf("Message sequence number: %d\n", packet.seqnum);
-    printf("Message %s\n\n", new_msg_show);
-    tolayer5(B,new_msg);
-    struct pkt ack_pkt;
-    ack_pkt.acknum = rcv_seq_num;
-    rcv_seq_num = !rcv_seq_num;
-    memset(ack_pkt.payload,'0',20);
-    ack_pkt.seqnum = 0;
-    create_checksum(&ack_pkt);
-    last_ack_pkt_sent = ack_pkt;
-    tolayer3(B,ack_pkt);
-    packets_sent ++;*/
 }
 
 /* called when B's timer goes off */
