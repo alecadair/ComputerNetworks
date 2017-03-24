@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <math.h>
+#include <string.h>
 /* ******************************************************************
  ALTERNATING BIT AND GO-BACK-N NETWORK EMULATOR: VERSION 1.1  J.F.Kurose
 
@@ -26,6 +28,15 @@
 #define   A    0
 #define   B    1
 
+/*Colors for debug printing*/
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 
 int TRACE = 1;             /* for my debugging */
 int nsim = 0;              /* number of messages from 5 to 4 so far */
@@ -38,8 +49,18 @@ int   ntolayer3;           /* number sent into layer 3 */
 int   nlost;               /* number lost in media */
 int ncorrupt;              /* number corrupted by media */
 
+int N = 4;                 /*Window Size*/
+int last_ack_seq;
+//int window_end_index = N - 1;       /*Index of the end of the window in the buffer*/s
+int next_seq_num = 0;       /**/
+int expected_seq_num = 0;
+int base = 0;              /*sequence number of the oldest unacknowledged packet*/
+int seq_max;
+int msg_count = 0;
+
+
 /* a "msg" is the data unit passed from layer 5 (teachers code) to layer  */
-/* 4 (students' code).  It contains the data (characters) to be delivered */
+/* 4 (students' code).  It contains the data (ch[<65;52;30M]aracters) to be delivered */
 /* to layer 5 via the students transport level protocol entities.         */
 struct msg {
   char data[20];
@@ -54,6 +75,7 @@ struct pkt {
     int checksum;
     char payload[20];
 };
+
 //time for timer to wait before timeout
 int TIME_WAIT;
 //counter for corrupted packets
@@ -132,6 +154,7 @@ char corrupt(struct pkt packet){
     else
         return 1;
 }
+
 /*sets checksum of checksum_pkt*/
 void create_checksum(struct pkt* checksum_pkt){
     int checksum = 0;
@@ -171,19 +194,21 @@ void A_output(struct msg message)
     char out_msg[20];
     for(int i = 0; i < 20; i ++)
         out_msg[i] = message.data[i];
-    printf("Queuing message: %s to output buffer\n", out_msg);
-    struct pkt packet_to_send = make_packet(message,0,seq_num);
-    seq_num = !seq_num;
-    printf("Sequence number for message: %d\n",!seq_num);
-    printf("Checksum for packet is %04x\n\n", packet_to_send.checksum);
+    //printf("Queuing message: %s to output buffer\n", out_msg);
+    struct pkt packet_to_send = make_packet(message,0,next_seq_num);
+    //seq_num = !seq_num;
+    //printf("Sequence number for message: %d\n",!seq_num);
+    //printf("Checksum for packet is %04x\n\n", packet_to_send.checksum);
     insert_packet_to_queue(packet_to_send);
-    if(!first_msg_sent){
-        last_packet_sent = packet_to_send;
-        tolayer3(A,packet_to_send);
-        packets_sent ++;
-        starttimer(A,TIME_WAIT);
-        first_msg_sent = 1;
+    msg_count ++;
+    if(next_seq_num < base + N){
+        //initiate_send(buff[next_seq_num]);
+        tolayer3(A,pkt_buffer[next_seq_num]);
+        if(base == next_seq_num)
+            //stoptimer(A);
+            starttimer(A,TIME_WAIT);
     }
+    next_seq_num ++;
 }
 
 void B_output(struct msg message)  /* need be completed only for extra credit */
@@ -195,18 +220,29 @@ void B_output(struct msg message)  /* need be completed only for extra credit */
 void A_input(struct pkt packet)
 {
     if(corrupt(packet)){
-        printf("ACK packet corrupted\n");
+        printf(ANSI_COLOR_GREEN "ACK packet corrupted\n" ANSI_COLOR_RESET "\n");
         corrupted_packets ++;
         return;
-    }if(packet.acknum != ack_wait){
+    }/*if(packet.acknum){
         printf("ACK received for wrong packet.\n");
         dropped_packets ++;
         return;
+        }*/
+    //ack_count++;
+    base = packet.acknum + 1;
+    if(base == next_seq_num){
+        stoptimer(A);
+    }else{
+        stoptimer(A);
+        starttimer(A,TIME_WAIT);
     }
-    ack_count++;
-    printf("Packet correctly acknowledged.\n");
-    printf("Packet ACK num: %d\n\n", packet.acknum);
-    printf("Number of successfully ACKed packets: %d", ack_count);
+    //printf("Packet correctly acknowledged.\n");
+    //printf("Packet ACK num: %d\n\n", packet.acknum);
+    //printf("Number of successfully ACKed packets: %d", ack_count);
+    //if(next_seq_num < base + N){
+    //    struct pkt pkt_to_send_B =
+    // }
+    /*
     stoptimer(A);
     starttimer(A,TIME_WAIT);
     ack_index ++;
@@ -221,23 +257,26 @@ void A_input(struct pkt packet)
     output[19] = '\0';
     printf("Packet message: %s\n\n", output);
     tolayer3(A,pkt_to_send_B);
-    packets_sent ++;
+    packets_sent ++;*/
 
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
-    printf("Timer hit packet being recent\n");
-    printf("Sequence Number: %d\n", pkt_buffer[ack_index].seqnum);
-    char pay[20];
-    for(int i = 0; i < 20; i ++)
-        pay[i] = pkt_buffer[ack_index].payload[i];
-    pay[19] = '\0';
-    printf("Payload being resent: %s\n\n", pay);
-    tolayer3(A,pkt_buffer[ack_index]);
-    packets_sent ++;
+    //printf("Timer hit packet being recent\n");
+    //printf("Sequence Number: %d\n", pkt_buffer[ack_index].seqnum);
     starttimer(A,TIME_WAIT);
+    for(int i = base; i < (base + N); i++)
+        tolayer3(A,pkt_buffer[i]);
+    //char pay[20];
+    //for(int i = 0; i < 20; i ++)
+        //    pay[i] = pkt_buffer[ack_index].payload[i];
+    //pay[19] = '\0';
+    //printf("Payload being resent: %s\n\n", pay);
+    //tolayer3(A,pkt_buffer[ack_index]);
+    //packets_sent ++;
+    //starttimer(A,TIME_WAIT);
 
 }  
 
@@ -245,7 +284,8 @@ void A_timerinterrupt()
 /* entity A routines are called. You can use it to do any initialization */
 void A_init()
 {
-	memset(last_packet_sent.payload,0,20);
+
+    memset(last_packet_sent.payload,0,20);
 	last_packet_sent.acknum = 0;
     last_packet_sent.checksum = 0;
     last_packet_sent.checksum = 0;
@@ -263,10 +303,27 @@ void B_input(struct pkt packet)
     char is_corrupt = corrupt(packet);
     if(is_corrupt){
         corrupted_packets ++;
-        printf("Packet received at receiver corrupted\n\n");
+        printf(ANSI_COLOR_BLUE "Packet received at receiver corrupted" ANSI_COLOR_RESET "\n\n");
+        return;
+    } else if(packet.acknum != expected_seq_num){
+        struct msg resend;
+        memset(resend.data,'0',20);
+        struct pkt ack_packet = make_packet(resend,expected_seq_num,0);
+        tolayer3(B,ack_packet);
         return;
     }
-    if(packet.seqnum != rcv_seq_num){//packet retransmitted from A, corrupt ACK
+    //if(packet.seqnum  != expected_seq_num)
+    char to_upper[21];
+    for(int i = 0; i < 20; i++)
+        to_upper[i] = packet.payload[i];
+    to_upper[20] = '\0';
+    tolayer5(B, to_upper);
+    struct msg ack_msg;
+    memset(ack_msg.data, '0', 20);
+    struct pkt ack_packet = make_packet(ack_msg, expected_seq_num, 0);
+    tolayer3(B,ack_packet);
+    expected_seq_num ++;
+   /* if(packet.seqnum != rcv_seq_num){//packet retransmitted from A, corrupt ACK
         printf("Duplicate message received\n\n");
         struct msg structmsg;
         memset(structmsg.data, '0',20);
@@ -293,7 +350,7 @@ void B_input(struct pkt packet)
     create_checksum(&ack_pkt);
     last_ack_pkt_sent = ack_pkt;
     tolayer3(B,ack_pkt);
-    packets_sent ++;
+    packets_sent ++;*/
 }
 
 /* called when B's timer goes off */
@@ -307,6 +364,7 @@ void B_timerinterrupt()
 /* entity B routines are called. You can use it to do any initialization */
 void B_init()
 {
+    expected_seq_num = 0;
 }
 
 
@@ -521,7 +579,7 @@ void insertevent(struct event *p)
              p->next = NULL;
              }
            else if (q==evlist) { /* front of list */
-             p->next=evlist;
+               p->next=evlist;
              p->prev=NULL;
              p->next->prev=p;
              evlist = p;
