@@ -303,12 +303,12 @@ void B_input(struct pkt packet)
     char is_corrupt = corrupt(packet);
     if(is_corrupt){
         corrupted_packets ++;
-        printf(ANSI_COLOR_BLUE "Packet received at receiver corrupted" ANSI_COLOR_RESET "\n\n");
+        printf("ANSI_COLOR_BLUE" "Packet received at receiver corrupted" "ANSI_COLOR_RESET" "\n\n");
         return;
-    } else if(packet.acknum != expected_seq_num){
+    } else if(packet.seqnum != expected_seq_num){
         struct msg resend;
         memset(resend.data,'0',20);
-        struct pkt ack_packet = make_packet(resend,expected_seq_num,0);
+        struct pkt ack_packet = make_packet(resend,expected_seq_num - 1,0);
         tolayer3(B,ack_packet);
         return;
     }
@@ -682,7 +682,7 @@ struct pkt packet;
  if (jimsrand() < lossprob)  {
       nlost++;
       if (TRACE>0)    
-	printf("          TOLAYER3: packet being lost\n");
+    printf("ANSI_COLOR_CYAN" "          TOLAYER3: packet being lost\n" "ANSI_COLOR_RESET");
       return;
     }  
 
