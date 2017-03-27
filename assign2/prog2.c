@@ -194,18 +194,12 @@ void A_output(struct msg message)
     char out_msg[20];
     for(int i = 0; i < 20; i ++)
         out_msg[i] = message.data[i];
-    //printf("Queuing message: %s to output buffer\n", out_msg);
     struct pkt packet_to_send = make_packet(message,0,next_seq_num);
-    //seq_num = !seq_num;
-    //printf("Sequence number for message: %d\n",!seq_num);
-    //printf("Checksum for packet is %04x\n\n", packet_to_send.checksum);
     insert_packet_to_queue(packet_to_send);
     msg_count ++;
     if(next_seq_num < base + N){
-        //initiate_send(buff[next_seq_num]);
         tolayer3(A,pkt_buffer[next_seq_num]);
         if(base == next_seq_num)
-            //stoptimer(A);
             starttimer(A,TIME_WAIT);
     }
     next_seq_num ++;
@@ -223,12 +217,7 @@ void A_input(struct pkt packet)
         printf(ANSI_COLOR_GREEN "ACK packet corrupted\n" ANSI_COLOR_RESET "\n");
         corrupted_packets ++;
         return;
-    }/*if(packet.acknum){
-        printf("ACK received for wrong packet.\n");
-        dropped_packets ++;
-        return;
-        }*/
-    //ack_count++;
+    }
     base = packet.acknum + 1;
     if(base == next_seq_num){
         stoptimer(A);
@@ -241,8 +230,6 @@ void A_input(struct pkt packet)
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
-    //printf("Timer hit packet being recent\n");
-    //printf("Sequence Number: %d\n", pkt_buffer[ack_index].seqnum);
     starttimer(A,TIME_WAIT);
     for(int i = base; i < (base + N); i++)
         tolayer3(A,pkt_buffer[i]);
@@ -271,7 +258,7 @@ void B_input(struct pkt packet)
     char is_corrupt = corrupt(packet);
     if(is_corrupt){
         corrupted_packets ++;
-        printf("ANSI_COLOR_BLUE" "Packet received at receiver corrupted" "ANSI_COLOR_RESET" "\n\n");
+        printf(ANSI_COLOR_BLUE "Packet received at receiver corrupted" ANSI_COLOR_RESET "\n\n");
         return;
     } else if(packet.seqnum != expected_seq_num){
         struct msg resend;
@@ -621,7 +608,7 @@ struct pkt packet;
  if (jimsrand() < lossprob)  {
       nlost++;
       if (TRACE>0)    
-    printf("ANSI_COLOR_CYAN" "          TOLAYER3: packet being lost\n" "ANSI_COLOR_RESET");
+    printf(ANSI_COLOR_CYAN"          TOLAYER3: packet being lost\n" ANSI_COLOR_RESET);
       return;
     }  
 
