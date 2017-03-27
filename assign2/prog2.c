@@ -298,8 +298,9 @@ void B_input(struct pkt packet)
     memset(ack_msg.data, '0', 20);
     struct pkt ack_packet = make_packet(ack_msg, expected_seq_num, 0);
     tolayer3(B,ack_packet);
-    printf("Sending ACK packet for sequence number: %d\n\n", packet.seqnum);
+    printf("Sending ACK packet for sequence number: %d\n", packet.seqnum);
     acks_sent ++;
+    printf("Total ACK packets sent: %g\n\n", acks_sent);
     total_packets_sent++;
     expected_seq_num ++;
 }
