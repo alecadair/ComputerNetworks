@@ -37,10 +37,7 @@
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
-print_green(char* message){
-    printf(ANSI_COLOR_GREEN "%s" ANSI_COLOR_RESET, message);
-}
-
+/*Simulation variables given by instructor*/
 int TRACE = 1;             /* for my debugging */
 int nsim = 0;              /* number of messages from 5 to 4 so far */
 int nsimmax = 0;           /* number of msgs to generate, then stop */
@@ -52,14 +49,15 @@ int   ntolayer3;           /* number sent into layer 3 */
 int   nlost;               /* number lost in media */
 int ncorrupt;              /* number corrupted by media */
 
-int N = 4;                 /*Window Size*/
+/*variables for A and B state machines*/
+int N = 8;                 /*Window Size*/
 int last_ack_seq;
-//int window_end_index = N - 1;       /*Index of the end of the window in the buffer*/s
-int next_seq_num = 0;       /**/
+int next_seq_num = 0;
 int expected_seq_num = 0;
 int base = 0;              /*sequence number of the oldest unacknowledged packet*/
 int seq_max;
 
+/*Variables required by assignment handout*/
 int msg_count = 0;
 int a_timeouts = 0;
 float packets_sent = 0;
@@ -113,6 +111,7 @@ int rcv_seq_num = 0;
 //current ack the sender is waiting on
 int ack_wait = 0;
 
+/*Function declerations*/
 void tolayer3(int,struct pkt);
 void tolayer5(int,char[20]);
 void starttimer(int,float);
@@ -146,10 +145,9 @@ char corrupt(struct pkt packet){
         return 1;
 }
 
-/*sets checksum of checksum_pkt*/
+/*sets checksum field of pkt struct given at atchecksum_pkt*/
 void create_checksum(struct pkt* checksum_pkt){
     int checksum = 0;
-    //sum payload
     char * payload_ptr = checksum_pkt->payload;
     for(unsigned long i = 0; i < 20; i ++){
         char* temp = payload_ptr + i;
@@ -162,7 +160,8 @@ void create_checksum(struct pkt* checksum_pkt){
     return;
 }
 
-/********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
+/*returns a packet with the appropriate checksum given a msg struct,
+  sequence number int, and acknum int*/
 struct pkt make_packet(struct msg message, int ack, int seq){
     struct pkt new_packet;
     for(int i =0; i < 20; i++)
@@ -176,12 +175,17 @@ struct pkt make_packet(struct msg message, int ack, int seq){
 /* called from layer 5, passed the data to be sent to other side */
 void A_output(struct msg message)
 {
+    printf("\n");
+    /*create a packet for buffering/sending, push to queue and increment the message count*/
     struct pkt packet_to_send = make_packet(message,0,next_seq_num);
     insert_packet_to_queue(packet_to_send);
     msg_count ++;
     printf("Message received at A: ");
-    for(int i = 0; i < 20; i++)
+    for(int i = 0; i < 20; i++)//fill array for printing
         printf("%c",message.data[i]);
+
+    /*If the next sequence number is within the window, send the packet to layer 3
+     increment packets sent to B as well as total packets sent counters*/
     if(next_seq_num < base + N){
         printf(" - No buffering needed, sent directly to layer 3.\n");
         tolayer3(A,pkt_buffer[next_seq_num]);
@@ -192,11 +196,14 @@ void A_output(struct msg message)
         if(base == next_seq_num)
             starttimer(A,TIME_WAIT);
     }
+    /*If the next sequence number is beyond the window do not send to layer 3.*/
     else{
         printf(" - Buffering needed, window is full.\n");
     }
     printf ("Sequence number: %d\n", pkt_buffer[next_seq_num].seqnum);
-    printf("Number of messages sent to A from layer 5: %d\n\n", msg_count);
+    printf("Number of messages sent to A from layer 5: %d\n", msg_count);
+
+    /*Increment the next sequence number*/
     next_seq_num ++;
 }
 
@@ -208,19 +215,23 @@ void B_output(struct msg message)  /* need be completed only for extra credit */
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet)
 {
-    printf("ACK packet received at A\n");
+    printf("\nACK packet received at A\n");
+
+    /*check for packet corruption. If packet is corrupt, increment the corrupted
+     packets counter, report to user, and return to wait state.*/
     if(corrupt(packet)){
         printf(ANSI_COLOR_GREEN "ACK packet corrupted\n" ANSI_COLOR_RESET);
         corrupted_packets ++;
         printf("Number of corrupted packets: %g\n",corrupted_packets);
-        printf("Corruption percentage: %.2f%%\n\n",((corrupted_packets/total_packets_sent)*100));
+        printf("Corruption percentage: %.2f%%\n",((corrupted_packets/total_packets_sent)*100));
         return;
     }
+    /*Set the base of the window to the packets acknum plus one,
+      increment acks_received counter, and set the timers accordingly*/
     printf("ACK number: %d\n", packet.acknum);
     acks_received ++;
-
     base = packet.acknum + 1;
-    printf("Base of window is now %d\n\n", base);
+    printf("Base of window is now %d\n", base);
     if(base == next_seq_num){
         stoptimer(A);
     }else{
@@ -232,10 +243,14 @@ void A_input(struct pkt packet)
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
+    /*increment the a_timeouts counter, and resend all packets in the window*/
     a_timeouts ++;
+    printf("\n");
     printf(ANSI_COLOR_CYAN "A timeout - Number of timeouts: %d\n" ANSI_COLOR_RESET, a_timeouts);
     printf(ANSI_COLOR_CYAN "Attempting to resend window buffer\n" ANSI_COLOR_RESET);
     starttimer(A,TIME_WAIT);
+
+    /*iterate through all packets in window and send to layer 3*/
     for(int i = base; i < (base + N); i++){
         printf(ANSI_COLOR_CYAN "Resending message ");
         for(int j = 0; j < 20; j++)
@@ -243,7 +258,6 @@ void A_timerinterrupt()
         printf("\n" ANSI_COLOR_RESET);
         tolayer3(A,pkt_buffer[i]);
     }
-    printf("\n");
 }  
 
 /* the following routine will be called once (only) before any other */
@@ -265,28 +279,38 @@ void A_init()
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
-
+    /*Check for packet corruption. */
     char is_corrupt = corrupt(packet);
-    printf("Message received at B\n");
+    printf("\nMessage received at B\n");
     if(is_corrupt){
+        /*If packet is corrput, report to user, increment corrupted packets counter,
+         and return to wait state*/
         corrupted_packets ++;
         printf(ANSI_COLOR_GREEN  "Message packet corrupted" ANSI_COLOR_RESET "\n");
         printf("Number of corrupted packets: %g\n",corrupted_packets);
         float corruption_percentage = (corrupted_packets/total_packets_sent)*100;
-        printf("Corruption percentage: %.2f%%\n\n", corruption_percentage);
+        printf("Corruption percentage: %.2f%%\n", corruption_percentage);
         return;
-    } else if(packet.seqnum != expected_seq_num){
+
+    }/* Check that the packet's sequence number equal's B's expected sequence number. */
+    else if(packet.seqnum != expected_seq_num){
+
+        /*If the packet's sequence number does not equal the expected sequence number,
+         create a new ACK packet with the expected_seq_num -1 as the ACK value and send it to A*/
         struct msg resend;
         memset(resend.data,'0',20);
         printf("Packet does not have sequence number B is expecting.\n");
         printf("Expected sequence number: %d\n", expected_seq_num);
-        printf("Resending ACK for sequence number: %d\n\n", expected_seq_num - 1);
+        printf("Resending ACK for sequence number: %d\n", expected_seq_num - 1);
         struct pkt ack_packet = make_packet(resend,expected_seq_num - 1,0);
         tolayer3(B,ack_packet);
-        total_packets_sent++;
-        acks_sent++;
+        total_packets_sent++;//increment counter
+        acks_sent++;         // variables as well
         return;
     }
+    /*If the packet is not corrupt, and the expected sequence number matches the
+     packet's sequence number send an ACK back to A with the packet's sequence number
+     as the ACK field for the packet.*/
     char to_upper[21];
     for(int i = 0; i < 20; i++)
         to_upper[i] = packet.payload[i];
@@ -298,11 +322,13 @@ void B_input(struct pkt packet)
     memset(ack_msg.data, '0', 20);
     struct pkt ack_packet = make_packet(ack_msg, expected_seq_num, 0);
     tolayer3(B,ack_packet);
+    /*Increment all counters as well as expected sequence number*/
     printf("Sending ACK packet for sequence number: %d\n", packet.seqnum);
     acks_sent ++;
-    printf("Total ACK packets sent: %g\n\n", acks_sent);
+    printf("Total ACK packets sent: %g\n", acks_sent);
     total_packets_sent++;
     expected_seq_num ++;
+
 }
 
 /* called when B's timer goes off */
@@ -635,7 +661,7 @@ struct pkt packet;
       nlost++;
       packets_lost++;
       if (TRACE>0)
-          printf(ANSI_COLOR_CYAN"          TOLAYER3: packet being lost\n" ANSI_COLOR_RESET);
+          printf("          TOLAYER3: packet being lost\n");
       return;
     }  
 
